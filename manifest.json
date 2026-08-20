@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.dgoran.omagestures",
   "name": "OmaGestures",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "author": "dgoran",
   "license": "MIT",
-  "description": "Three-finger trackpad gestures for half-screen and corner window snapping on Omarchy. Hyprland-native; no Quickshell service.",
-  "kinds": [],
-  "entryPoints": {}
+  "description": "Three-finger trackpad gestures for half-screen and corner window snapping on Omarchy. Hyprland-native installer; inert shell entry point for plugin validation.",
+  "kinds": ["panel"],
+  "entryPoints": {"panel": "Panel.qml"}
 }
