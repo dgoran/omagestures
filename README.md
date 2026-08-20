@@ -17,6 +17,14 @@ omarchy plugin add https://github.com/dgoran/omagestures.git --enable
 
 The follow-up gesture targets the same window moved by the initial left/right swipe.
 
+## How it works
+
+OmaGestures is an Omarchy `service` plugin. Omarchy creates the service first and injects its manifest afterward, so activation waits for `manifest.__sourceDir` to become available. The service then launches a detached activation script that registers the four gestures directly in Hyprland with `hyprctl eval`.
+
+It does not modify `~/.config/hypr/input.lua`, does not reload Hyprland, does not restart Quickshell, and does not register any Quickshell IPC target.
+
+Disabling/removing the plugin unregisters the four gestures.
+
 ## Remove
 
 ```sh
@@ -26,7 +34,5 @@ omarchy plugin remove io.github.dgoran.omagestures
 ## Requirements
 
 - Omarchy Quattro plugin system
-- Hyprland with Lua gesture callback support
+- Hyprland 0.55+ with Lua configuration support
 - Python 3
-
-The plugin only manages its own marked block in `~/.config/hypr/input.lua`.
