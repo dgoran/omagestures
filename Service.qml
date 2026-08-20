@@ -1,40 +1,30 @@
 import QtQuick
-import Quickshell.Io
+import Quickshell
 
 Item {
     id: root
 
-    // Omarchy injects these into plugin entry points.
     property string omarchyPath: ""
     property var shell
     property var manifest
     property var pluginRegistry
 
+    property bool activated: false
     readonly property string pluginDir: String(manifest && manifest.__sourceDir ? manifest.__sourceDir : "")
 
-    Process {
-        id: applyProcess
-        onExited: function(exitCode) {
-            reloadProcess.command = ["hyprctl", "reload"]
-            reloadProcess.running = true
-        }
-    }
-
-    Process { id: reloadProcess }
-
-    function apply(mode) {
-        if (!pluginDir) {
-            console.warn("OmaGestures: plugin source directory unavailable")
+    function activateIfReady() {
+        if (activated || pluginDir.length === 0)
             return
-        }
-        applyProcess.command = ["python3", pluginDir + "/apply.py", mode, pluginDir]
-        applyProcess.running = true
+
+        activated = true
+        Quickshell.execDetached(["bash", pluginDir + "/activate.sh", "enable", pluginDir])
     }
 
-    Component.onCompleted: {
-        console.log("OmaGestures: enabling from " + pluginDir)
-        apply("enable")
-    }
+    onManifestChanged: activateIfReady()
+    onPluginDirChanged: activateIfReady()
 
-    Component.onDestruction: apply("disable")
+    Component.onDestruction: {
+        if (pluginDir.length > 0)
+            Quickshell.execDetached(["bash", pluginDir + "/activate.sh", "disable", pluginDir])
+    }
 }
