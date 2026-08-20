@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.dgoran.omagestures",
+  "name": "OmaGestures",
+  "version": "3.0.0",
+  "author": "dgoran",
+  "license": "MIT",
+  "description": "Three-finger trackpad gestures for half-screen and corner window snapping on Omarchy.",
+  "kinds": ["service"],
+  "entryPoints": {"service": "Service.qml"}
+}
