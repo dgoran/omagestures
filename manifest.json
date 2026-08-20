@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.dgoran.omagestures",
   "name": "OmaGestures",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "author": "dgoran",
   "license": "MIT",
   "description": "Three-finger trackpad gestures for half-screen and corner window snapping on Omarchy.",
