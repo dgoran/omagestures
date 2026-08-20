@@ -19,11 +19,11 @@ The follow-up gesture targets the same window moved by the initial left/right sw
 
 ## How it works
 
-OmaGestures is an Omarchy `service` plugin. Omarchy creates the service first and injects its manifest afterward, so activation waits for `manifest.__sourceDir` to become available. The service then launches a detached activation script that registers the four gestures directly in Hyprland with `hyprctl eval`.
+OmaGestures is an Omarchy `service` plugin. Its tiny, nonvisual QML adapter starts one activation script after Omarchy supplies the plugin directory. That script installs four native gesture callbacks in Hyprland's Lua runtime. Hyprland holds the selected window and 30-second sequence state in memory and performs the window operations directly.
 
-It does not modify `~/.config/hypr/input.lua`, does not reload Hyprland, does not restart Quickshell, and does not register any Quickshell IPC target.
+There is no Python helper, state file, persistent subprocess, Hyprland config edit/reload, Quickshell restart, or plugin IPC target.
 
-Disabling/removing the plugin unregisters the four gestures.
+Disabling or removing the plugin unregisters its four gestures and clears its in-memory state.
 
 ## Remove
 
@@ -34,5 +34,4 @@ omarchy plugin remove io.github.dgoran.omagestures
 ## Requirements
 
 - Omarchy Quattro plugin system
-- Hyprland 0.55+ with Lua configuration support
-- Python 3
+- Hyprland 0.56+ with Lua configuration support
