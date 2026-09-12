@@ -83,14 +83,19 @@ now = 230
 gestures.down()
 expect_geometry(590, 290, 480, 220, other_window)
 
--- Only floating windows are snapped.
+-- Only floating windows are snapped, and a rejected swipe disarms the pending
+-- follow-up instead of leaving the previously snapped window targeted.
+active_window = other_window
+gestures.left()
 active_window = { mapped = true, floating = false, fullscreen = 0, monitor = monitor }
 reset_calls()
 gestures.left()
 assert(#calls == 0, "a tiled window must be left alone")
 gestures.up()
-assert(#calls == 0, "a tiled window must not arm the vertical follow-up")
+assert(#calls == 0, "a rejected swipe must clear the armed follow-up")
 
+active_window = other_window
+gestures.left()
 active_window = { mapped = true, floating = true, fullscreen = 2, monitor = monitor }
 reset_calls()
 gestures.left()

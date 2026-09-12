@@ -63,6 +63,10 @@ function runtime.horizontal(side)
   local monitor = window and window.monitor or nil
   if snap(window, monitor, side, nil) then
     runtime.state = { window = window, monitor = monitor, side = side, deadline = os.time() + 30 }
+  else
+    -- A rejected swipe must not leave an earlier window armed, or the next
+    -- vertical swipe would corner a window the user has already left behind.
+    runtime.state = nil
   end
 end
 
