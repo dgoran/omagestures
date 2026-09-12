@@ -22,13 +22,11 @@ cat >"$tmp/harness.lua" <<'EOF'
 local gestures = {}
 local calls = {}
 local now = 100
-local active_window = {
-  mapped = true,
-  monitor = {
-    x = 100, y = 50, width = 2000, height = 1000, scale = 2,
-    reserved = { 10, 20, 30, 40 },
-  },
+local monitor = {
+  x = 100, y = 50, width = 2000, height = 1000, scale = 2,
+  reserved = { 10, 20, 30, 40 },
 }
+local active_window = { mapped = true, floating = true, fullscreen = 0, monitor = monitor }
 
 os.time = function() return now end
 
@@ -46,22 +44,22 @@ hl.dsp.window.move = function(spec) return { kind = "move", spec = spec } end
 assert(loadfile(os.getenv("OMAGESTURES_CAPTURE")))()
 
 local function reset_calls() calls = {} end
+-- A floating window is snapped where it already is, so nothing floats it.
 local function expect_geometry(x, y, w, h, window)
-  assert(#calls == 3, "expected float, resize, and move dispatches")
-  assert(calls[1].kind == "float" and calls[1].spec.action == "set")
-  assert(calls[2].kind == "resize")
-  assert(calls[2].spec.x == w and calls[2].spec.y == h)
+  assert(#calls == 2, "expected resize and move dispatches")
+  assert(calls[1].kind == "resize")
+  assert(calls[1].spec.x == w and calls[1].spec.y == h)
+  assert(calls[1].spec.relative == false and calls[1].spec.window == window)
+  assert(calls[2].kind == "move")
+  assert(calls[2].spec.x == x and calls[2].spec.y == y)
   assert(calls[2].spec.relative == false and calls[2].spec.window == window)
-  assert(calls[3].kind == "move")
-  assert(calls[3].spec.x == x and calls[3].spec.y == y)
-  assert(calls[3].spec.relative == false and calls[3].spec.window == window)
 end
 
 local snapped_window = active_window
 gestures.left()
 expect_geometry(110, 70, 480, 440, snapped_window)
 
-local other_window = { mapped = true, monitor = active_window.monitor }
+local other_window = { mapped = true, floating = true, fullscreen = 0, monitor = monitor }
 active_window = other_window
 reset_calls()
 gestures.up()
@@ -84,6 +82,21 @@ reset_calls()
 now = 230
 gestures.down()
 expect_geometry(590, 290, 480, 220, other_window)
+
+-- Only floating windows are snapped.
+active_window = { mapped = true, floating = false, fullscreen = 0, monitor = monitor }
+reset_calls()
+gestures.left()
+assert(#calls == 0, "a tiled window must be left alone")
+gestures.up()
+assert(#calls == 0, "a tiled window must not arm the vertical follow-up")
+
+active_window = { mapped = true, floating = true, fullscreen = 2, monitor = monitor }
+reset_calls()
+gestures.left()
+assert(#calls == 0, "a fullscreen window must be left alone")
+gestures.up()
+assert(#calls == 0, "a fullscreen window must not arm the vertical follow-up")
 
 print("native gesture behavior: ok")
 EOF

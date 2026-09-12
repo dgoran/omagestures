@@ -4,9 +4,12 @@ set -euo pipefail
 case "${1:-}" in
 enable)
   hyprctl eval '
-local directions = { "left", "right", "up", "down" }
-for _, direction in ipairs(directions) do
-  hl.gesture({ fingers = 3, direction = direction, action = "unset" })
+-- Only a previous activation can leave gestures behind; unsetting a gesture
+-- that was never registered is an error Hyprland reports back to hyprctl.
+if _G.omagestures ~= nil then
+  for _, direction in ipairs({ "left", "right", "up", "down" }) do
+    pcall(hl.gesture, { fingers = 3, direction = direction, action = "unset" })
+  end
 end
 
 local runtime = { state = nil }
@@ -45,8 +48,11 @@ end
 
 local function snap(window, monitor, side, vertical)
   if window == nil or monitor == nil or window.mapped == false then return false end
+  -- Snapping applies to floating windows only: a tiled window belongs to its
+  -- layout, and a fullscreen window has no half to move to.
+  if window.floating ~= true then return false end
+  if (tonumber(window.fullscreen) or 0) ~= 0 then return false end
   local x, y, width, height = geometry(monitor, side, vertical)
-  hl.dispatch(hl.dsp.window.float({ action = "set", window = window }))
   hl.dispatch(hl.dsp.window.resize({ x = width, y = height, relative = false, window = window }))
   hl.dispatch(hl.dsp.window.move({ x = x, y = y, relative = false, window = window }))
   return true
@@ -71,12 +77,14 @@ hl.gesture({ fingers = 3, direction = "left", action = function() pcall(runtime.
 hl.gesture({ fingers = 3, direction = "right", action = function() pcall(runtime.horizontal, "right") end })
 hl.gesture({ fingers = 3, direction = "up", action = function() pcall(runtime.vertical, "up") end })
 hl.gesture({ fingers = 3, direction = "down", action = function() pcall(runtime.vertical, "down") end })
-' >/dev/null
+' >/dev/null || true
   ;;
 disable)
   hyprctl eval '
-for _, direction in ipairs({ "left", "right", "up", "down" }) do
-  hl.gesture({ fingers = 3, direction = direction, action = "unset" })
+if _G.omagestures ~= nil then
+  for _, direction in ipairs({ "left", "right", "up", "down" }) do
+    pcall(hl.gesture, { fingers = 3, direction = direction, action = "unset" })
+  end
 end
 _G.omagestures = nil
 ' >/dev/null || true
