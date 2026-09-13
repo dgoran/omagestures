@@ -21,6 +21,30 @@ window is left alone, so the swipe does nothing in those cases.
 
 The follow-up gesture targets the same window moved by the initial left/right swipe.
 
+Snapped windows are inset by a gap rather than sitting flush: 5px from the
+usable screen edge and 10px between two halves, matching Omarchy's default
+`gaps_out` and `gaps_in`.
+
+## Bar widget
+
+OmaGestures puts a `◧` button on the Omarchy bar. Clicking it opens a small
+panel that switches the gestures on or off and sets the two gaps with sliders;
+the button dims while the gestures are off. Changes apply immediately.
+
+Settings are stored twice on purpose. The bar entry in
+`~/.config/omarchy/shell.json` is what the panel displays, and
+`~/.local/state/omarchy/omagestures.conf` is what `activate.sh` reads, so a
+Hyprland config reload can reinstall the gestures with the chosen gaps without
+the shell being involved. The script reads that file key by key rather than
+sourcing it, and refuses anything that is not an integer of at most 200.
+
+Both can be driven from a terminal:
+
+```sh
+./activate.sh show             # print the current settings
+./activate.sh apply 1 5 10     # <enabled> <outer gap> <inner gap>
+```
+
 ## How it works
 
 OmaGestures is an Omarchy `service` plugin. Its tiny, nonvisual QML adapter resolves its own plugin directory and starts one activation script from it. That script installs four native gesture callbacks in Hyprland's Lua runtime. Hyprland holds the selected window and 30-second sequence state in memory and performs the window operations directly.

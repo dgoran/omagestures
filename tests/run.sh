@@ -15,6 +15,9 @@ EOF
 chmod +x "$tmp/bin/hyprctl"
 
 export PATH="$tmp/bin:$PATH"
+# Keep the suite off the real settings file, so a gap the user picked in the bar
+# widget cannot change what the geometry assertions below expect.
+export OMAGESTURES_CONFIG="$tmp/omagestures.conf"
 export OMAGESTURES_CAPTURE="$tmp/enable.lua"
 bash "$repo/activate.sh" enable
 
@@ -57,13 +60,13 @@ end
 
 local snapped_window = active_window
 gestures.left()
-expect_geometry(110, 70, 480, 440, snapped_window)
+expect_geometry(115, 75, 470, 430, snapped_window)
 
 local other_window = { mapped = true, floating = true, fullscreen = 0, monitor = monitor }
 active_window = other_window
 reset_calls()
 gestures.up()
-expect_geometry(110, 70, 480, 220, snapped_window)
+expect_geometry(115, 75, 470, 210, snapped_window)
 
 reset_calls()
 gestures.down()
@@ -81,7 +84,7 @@ gestures.right()
 reset_calls()
 now = 230
 gestures.down()
-expect_geometry(590, 290, 480, 220, other_window)
+expect_geometry(595, 295, 470, 210, other_window)
 
 -- Only floating windows are snapped, and a rejected swipe disarms the pending
 -- follow-up instead of leaving the previously snapped window targeted.
@@ -130,6 +133,25 @@ print("gesture cleanup: ok")
 EOF
 
 lua "$tmp/disable-harness.lua"
+
+# Settings round-trip: apply persists, show reports, and a bad value is refused
+# before it can reach the Lua that gets evaluated inside Hyprland.
+export OMAGESTURES_CAPTURE="$tmp/apply.lua"
+bash "$repo/activate.sh" apply 1 8 16
+[[ $(bash "$repo/activate.sh" show) == "ENABLED=1
+GAP_OUTER=8
+GAP_INNER=16" ]] || { echo "settings round-trip failed"; exit 1; }
+grep -q "local GAP_OUTER = 8 local GAP_INNER = 16" "$tmp/apply.lua" ||
+  { echo "applied gaps did not reach the Lua prelude"; exit 1; }
+if bash "$repo/activate.sh" apply 1 "x; rm -rf /" 5 2>/dev/null; then
+  echo "non-numeric gap was accepted"; exit 1
+fi
+# Disabling in the widget must survive the reinstall that a config reload runs.
+bash "$repo/activate.sh" apply 0 5 10
+grep -q "_G.omagestures = nil" "$tmp/apply.lua" ||
+  { echo "disabled state did not unregister on enable"; exit 1; }
+bash "$repo/activate.sh" apply 1 5 10
+echo "settings round-trip: ok"
 
 bash -n "$repo/activate.sh"
 jq -e . "$repo/manifest.json" >/dev/null

@@ -1,9 +1,47 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-case "${1:-}" in
-enable)
+# Settings the bar widget writes and this script reads, so a Hyprland config
+# reload (which reinstalls through "enable") keeps the chosen gaps.
+config_file="${OMAGESTURES_CONFIG:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/omagestures.conf}"
+
+enabled=1
+gap_outer=5
+gap_inner=10
+
+# Read one key without sourcing the file, so a corrupted or hand-edited config
+# cannot execute anything. Non-numeric or out-of-range values keep the default.
+read_setting() {
+  local key=$1 fallback=$2 value
+  [[ -f $config_file ]] || { printf '%s' "$fallback"; return; }
+  value=$(sed -n "s/^${key}=\\([0-9]\\{1,3\\}\\)$/\\1/p" "$config_file" | tail -n1)
+  [[ -n $value && $value -le 200 ]] && printf '%s' "$value" || printf '%s' "$fallback"
+}
+
+load_settings() {
+  enabled=$(read_setting ENABLED 1)
+  gap_outer=$(read_setting GAP_OUTER 5)
+  gap_inner=$(read_setting GAP_INNER 10)
+}
+
+write_settings() {
+  mkdir -p "$(dirname "$config_file")"
+  printf 'ENABLED=%s\nGAP_OUTER=%s\nGAP_INNER=%s\n' "$1" "$2" "$3" >"$config_file"
+}
+
+unregister() {
   hyprctl eval '
+if _G.omagestures ~= nil then
+  for _, direction in ipairs({ "left", "right", "up", "down" }) do
+    pcall(hl.gesture, { fingers = 3, direction = direction, action = "unset" })
+  end
+end
+_G.omagestures = nil
+' >/dev/null || true
+}
+
+register() {
+  hyprctl eval "local GAP_OUTER = ${gap_outer} local GAP_INNER = ${gap_inner}"'
 -- Only a previous activation can leave gestures behind; unsetting a gesture
 -- that was never registered is an error Hyprland reports back to hyprctl.
 if _G.omagestures ~= nil then
@@ -31,19 +69,27 @@ local function geometry(monitor, side, vertical)
   local bottom = edge(reserved, "bottom", 4)
   local width = math.max(2, math.floor((tonumber(monitor.width) or 0) / scale + 0.5) - left - right)
   local height = math.max(2, math.floor((tonumber(monitor.height) or 0) / scale + 0.5) - top - bottom)
-  local left_width = math.floor(width / 2)
-  local right_width = width - left_width
-  local top_height = math.floor(height / 2)
-  local bottom_height = height - top_height
-  local x = (tonumber(monitor.x) or 0) + left
-  local y = (tonumber(monitor.y) or 0) + top
 
-  if side == "right" then x = x + left_width end
-  if vertical == "down" then y = y + top_height end
+  -- Inset the usable area first, then split what is left around the inner gap.
+  -- A screen too small to hold its gaps still yields a window of a few pixels
+  -- rather than a negative size Hyprland would reject.
+  local avail_width = math.max(2, width - 2 * GAP_OUTER)
+  local avail_height = math.max(2, height - 2 * GAP_OUTER)
+  local split_width = math.max(2, avail_width - GAP_INNER)
+  local split_height = math.max(2, avail_height - GAP_INNER)
+  local left_width = math.max(2, math.floor(split_width / 2))
+  local right_width = math.max(2, split_width - left_width)
+  local top_height = math.max(2, math.floor(split_height / 2))
+  local bottom_height = math.max(2, split_height - top_height)
+  local x = (tonumber(monitor.x) or 0) + left + GAP_OUTER
+  local y = (tonumber(monitor.y) or 0) + top + GAP_OUTER
+
+  if side == "right" then x = x + left_width + GAP_INNER end
+  if vertical == "down" then y = y + top_height + GAP_INNER end
 
   return x, y,
     side == "left" and left_width or right_width,
-    vertical == nil and height or (vertical == "up" and top_height or bottom_height)
+    vertical == nil and avail_height or (vertical == "up" and top_height or bottom_height)
 end
 
 local function snap(window, monitor, side, vertical)
@@ -82,16 +128,34 @@ hl.gesture({ fingers = 3, direction = "right", action = function() pcall(runtime
 hl.gesture({ fingers = 3, direction = "up", action = function() pcall(runtime.vertical, "up") end })
 hl.gesture({ fingers = 3, direction = "down", action = function() pcall(runtime.vertical, "down") end })
 ' >/dev/null || true
+}
+
+case "${1:-}" in
+enable)
+  load_settings
+  # Turning the gestures off in the widget has to survive a Hyprland config
+  # reload too, and a reload comes back through this same path.
+  if [[ $enabled == 0 ]]; then unregister; else register; fi
   ;;
 disable)
-  hyprctl eval '
-if _G.omagestures ~= nil then
-  for _, direction in ipairs({ "left", "right", "up", "down" }) do
-    pcall(hl.gesture, { fingers = 3, direction = direction, action = "unset" })
-  end
-end
-_G.omagestures = nil
-' >/dev/null || true
+  unregister
+  ;;
+apply)
+  # apply <enabled> <outer> <inner> -- what the bar widget calls when a
+  # control changes: persist first, then reinstall from the stored values.
+  [[ $# -eq 4 ]] || exit 2
+  for value in "$2" "$3" "$4"; do
+    [[ $value =~ ^[0-9]{1,3}$ && $value -le 200 ]] || exit 2
+  done
+  write_settings "$2" "$3" "$4"
+  load_settings
+  if [[ $enabled == 0 ]]; then unregister; else register; fi
+  ;;
+show)
+  # The widget reads its initial state from here, so the config file stays the
+  # single source of truth even when shell.json has no entry yet.
+  load_settings
+  printf 'ENABLED=%s\nGAP_OUTER=%s\nGAP_INNER=%s\n' "$enabled" "$gap_outer" "$gap_inner"
   ;;
 *)
   exit 2
