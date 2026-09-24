@@ -47,6 +47,8 @@ hl = {
     if spec.action == "unset" then gestures[key(spec)] = nil else gestures[key(spec)] = spec.action end
   end,
   dispatch = function(dispatcher) calls[#calls + 1] = dispatcher end,
+  bind = function() end,
+  unbind = function() end,
 }
 
 hl.dsp.window.float = function(spec) return { kind = "float", spec = spec } end
@@ -183,14 +185,20 @@ local function key(spec)
   local scale = spec.scale and string.format("%.1f", spec.scale) or ""
   return table.concat({ tostring(spec.fingers), spec.direction, spec.mods or "", scale }, ":")
 end
+local unbound = false
 hl = {
   gesture = function(spec)
     assert(spec.action == "unset")
     removed[key(spec)] = true
   end,
+  unbind = function(key)
+    assert(key == "mouse:274")
+    unbound = true
+  end,
 }
-_G.omagestures = { state = "old" }
+_G.omagestures = { state = "old", tap = true }
 assert(loadfile(os.getenv("OMAGESTURES_CAPTURE")))()
+assert(unbound, "disable must release the three-finger tap")
 local expected = {
   "3:left::", "3:right::", "3:up::", "3:down::",
   "4:horizontal:SUPER:1.3", "4:up:SUPER:", "4:left::", "4:right::",
@@ -210,7 +218,12 @@ export OMAGESTURES_CAPTURE="$tmp/apply.lua"
 bash "$repo/activate.sh" apply 1 8 16
 [[ $(bash "$repo/activate.sh" show) == "ENABLED=1
 GAP_OUTER=8
-GAP_INNER=16" ]] || { echo "settings round-trip failed"; exit 1; }
+GAP_INNER=16
+CORNERS=1
+TAP_FLOAT=1
+WORKSPACE_STEP=1
+WORKSPACE_SWIPE=1
+EXPOSE=1" ]] || { echo "settings round-trip failed"; exit 1; }
 grep -q "local GAP_OUTER = 8 local GAP_INNER = 16" "$tmp/apply.lua" ||
   { echo "applied gaps did not reach the Lua prelude"; exit 1; }
 if bash "$repo/activate.sh" apply 1 "x; rm -rf /" 5 2>/dev/null; then
@@ -226,13 +239,19 @@ local function key(spec)
   return table.concat({ tostring(spec.fingers), spec.direction, spec.mods or "", scale }, ":")
 end
 hl = {
-  dsp = { window = {}, focus = function() return {} end, event = function() return {} end },
+  dsp = {
+    window = { float = function(spec) return { kind = "float", spec = spec } end },
+    focus = function() return {} end,
+    event = function() return {} end,
+  },
   get_active_window = function() return nil end,
   get_active_workspace = function() return { id = 1 } end,
   gesture = function(spec)
     if spec.action == "unset" then live[key(spec)] = nil else live[key(spec)] = spec.action end
   end,
   dispatch = function() end,
+  bind = function() end,
+  unbind = function() end,
 }
 _G.omagestures = { state = "armed" }
 assert(loadfile(os.getenv("OMAGESTURES_CAPTURE")))()
@@ -244,6 +263,46 @@ print("snap toggle keeps workspace gestures: ok")
 EOF
 lua "$tmp/snap-off.lua"
 bash "$repo/activate.sh" apply 1 5 10
+# Each switch installs only its own gesture. Corners stay off while half snap
+# stays on, and a tap that was previously installed is released.
+bash "$repo/activate.sh" apply 1 5 10 0 0 0 1 0
+cat >"$tmp/selective.lua" <<'EOF'
+local live = {}
+local unbound = false
+local bound = false
+local function key(spec)
+  local scale = spec.scale and string.format("%.1f", spec.scale) or ""
+  return table.concat({ tostring(spec.fingers), spec.direction, spec.mods or "", scale }, ":")
+end
+hl = {
+  dsp = {
+    window = { float = function(spec) return { kind = "float", spec = spec } end },
+    focus = function() return {} end,
+    event = function() return {} end,
+  },
+  get_active_window = function() return nil end,
+  get_active_workspace = function() return { id = 1 } end,
+  gesture = function(spec)
+    if spec.action == "unset" then live[key(spec)] = nil else live[key(spec)] = spec.action end
+  end,
+  dispatch = function() end,
+  bind = function(key) bound = key end,
+  unbind = function(key) unbound = key end,
+}
+_G.omagestures = { tap = true }
+assert(loadfile(os.getenv("OMAGESTURES_CAPTURE")))()
+assert(type(live["3:left::"]) == "function", "half snap stays available")
+assert(live["3:up::"] == nil, "corner follow-up can be switched off")
+assert(live["4:left::"] == nil, "workspace stepping can be switched off")
+assert(live["4:up:SUPER:"] == nil, "Exposé can be switched off")
+assert(live["4:horizontal:SUPER:1.3"] == "workspace", "the Super swipe can stay on alone")
+assert(unbound == "mouse:274", "switching the tap off releases the previous bind")
+assert(bound == false, "a disabled tap is not installed again")
+assert(_G.omagestures.tap == false, "the runtime remembers that the tap is off")
+print("selective switches: ok")
+EOF
+lua "$tmp/selective.lua"
+bash "$repo/activate.sh" apply 1 5 10 1 1 1 1 1
 echo "settings round-trip: ok"
 
 bash -n "$repo/activate.sh"

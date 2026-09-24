@@ -2,12 +2,17 @@
 set -euo pipefail
 
 # Settings the bar widget writes and this script reads, so a Hyprland config
-# reload (which reinstalls through "enable") keeps the chosen gaps.
+# reload (which reinstalls through "enable") keeps the chosen gestures.
 config_file="${OMAGESTURES_CONFIG:-${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/omagestures.conf}"
 
 enabled=1
 gap_outer=5
 gap_inner=10
+corners=1
+tap_float=1
+workspace_step=1
+workspace_swipe=1
+expose=1
 
 # Read one key without sourcing the file, so a corrupted or hand-edited config
 # cannot execute anything. Non-numeric or out-of-range values keep the default.
@@ -22,21 +27,26 @@ load_settings() {
   enabled=$(read_setting ENABLED 1)
   gap_outer=$(read_setting GAP_OUTER 5)
   gap_inner=$(read_setting GAP_INNER 10)
+  corners=$(read_setting CORNERS 1)
+  tap_float=$(read_setting TAP_FLOAT 1)
+  workspace_step=$(read_setting WORKSPACE_STEP 1)
+  workspace_swipe=$(read_setting WORKSPACE_SWIPE 1)
+  expose=$(read_setting EXPOSE 1)
 }
 
 write_settings() {
   mkdir -p "$(dirname "$config_file")"
-  printf 'ENABLED=%s\nGAP_OUTER=%s\nGAP_INNER=%s\n' "$1" "$2" "$3" >"$config_file"
+  printf 'ENABLED=%s\nGAP_OUTER=%s\nGAP_INNER=%s\nCORNERS=%s\nTAP_FLOAT=%s\nWORKSPACE_STEP=%s\nWORKSPACE_SWIPE=%s\nEXPOSE=%s\n' \
+    "$enabled" "$gap_outer" "$gap_inner" "$corners" "$tap_float" "$workspace_step" "$workspace_swipe" "$expose" \
+    >"$config_file"
 }
 
-# mode is "register" or "unregister". snap is 1 or 0. Gaps are integers the
-# caller already checked. Unregister drops every gesture this plugin owns.
-# Register always installs the four-finger workspace gestures; the three-finger
-# snap is included only while snap is 1, so the bar toggle can turn snapping
-# off without taking workspace switching with it.
+# mode is "register" or "unregister". Each flag is 1 or 0 and the gaps are
+# integers the caller already checked. Unregister drops every gesture and the
+# tap bind this plugin owns. Register installs only the switches that are on.
 invoke() {
-  local mode=$1 snap=$2
-  hyprctl eval "local MODE = \"${mode}\" local SNAP = ${snap} local GAP_OUTER = ${gap_outer} local GAP_INNER = ${gap_inner}"'
+  local mode=$1
+  hyprctl eval "local MODE = \"${mode}\" local SNAP = ${enabled} local CORNERS = ${corners} local TAP = ${tap_float} local STEP = ${workspace_step} local SWIPE = ${workspace_swipe} local EXPOSE = ${expose} local GAP_OUTER = ${gap_outer} local GAP_INNER = ${gap_inner}"'
 local function unset(spec)
   local clear = { fingers = spec.fingers, direction = spec.direction, action = "unset" }
   if spec.mods ~= nil then clear.mods = spec.mods end
@@ -68,6 +78,7 @@ local nav_specs = {
 if _G.omagestures ~= nil then
   for _, spec in ipairs(snap_specs) do unset(spec) end
   for _, spec in ipairs(nav_specs) do unset(spec) end
+  if _G.omagestures.tap then pcall(hl.unbind, "mouse:274") end
 end
 
 if MODE == "unregister" then
@@ -165,51 +176,88 @@ function runtime.vertical(direction)
   snap(state.window, state.monitor, state.side, direction)
 end
 
+runtime.tap = false
+
 if SNAP == 1 then
   hl.gesture({ fingers = 3, direction = "left", action = function() pcall(runtime.horizontal, "left") end })
   hl.gesture({ fingers = 3, direction = "right", action = function() pcall(runtime.horizontal, "right") end })
-  hl.gesture({ fingers = 3, direction = "up", action = function() pcall(runtime.vertical, "up") end })
-  hl.gesture({ fingers = 3, direction = "down", action = function() pcall(runtime.vertical, "down") end })
+  if CORNERS == 1 then
+    hl.gesture({ fingers = 3, direction = "up", action = function() pcall(runtime.vertical, "up") end })
+    hl.gesture({ fingers = 3, direction = "down", action = function() pcall(runtime.vertical, "down") end })
+  end
 end
 
-hl.gesture({ fingers = 4, direction = "horizontal", mods = "SUPER", scale = 1.3, action = "workspace" })
-hl.gesture({
-  fingers = 4,
-  direction = "up",
-  mods = "SUPER",
-  action = function() pcall(hl.dispatch, hl.dsp.event("expose.window-overview:toggle")) end,
-})
-hl.gesture({ fingers = 4, direction = "left", action = function() pcall(step_workspace, -1) end })
-hl.gesture({ fingers = 4, direction = "right", action = function() pcall(step_workspace, 1) end })
+if SWIPE == 1 then
+  hl.gesture({ fingers = 4, direction = "horizontal", mods = "SUPER", scale = 1.3, action = "workspace" })
+end
+if EXPOSE == 1 then
+  hl.gesture({
+    fingers = 4,
+    direction = "up",
+    mods = "SUPER",
+    action = function() pcall(hl.dispatch, hl.dsp.event("expose.window-overview:toggle")) end,
+  })
+end
+if STEP == 1 then
+  hl.gesture({ fingers = 4, direction = "left", action = function() pcall(step_workspace, -1) end })
+  hl.gesture({ fingers = 4, direction = "right", action = function() pcall(step_workspace, 1) end })
+end
+
+if TAP == 1 then
+  hl.bind("mouse:274", hl.dsp.window.float({ action = "toggle" }), {
+    mouse = true,
+    description = "Toggle window floating or tiling",
+  })
+  runtime.tap = true
+end
 ' >/dev/null || true
 }
+
+is_flag() { [[ $1 == 0 || $1 == 1 ]]; }
+is_gap() { [[ $1 =~ ^[0-9]{1,3}$ && $1 -le 200 ]]; }
 
 case "${1:-}" in
 enable)
   load_settings
-  # Snapping off has to survive a Hyprland config reload too, and a reload
-  # comes back through this same path. Workspace gestures stay either way.
-  if [[ $enabled == 0 ]]; then invoke register 0; else invoke register 1; fi
+  # A reload comes back through this path, so a switch that is off stays off.
+  invoke register
   ;;
 disable)
-  invoke unregister 0
+  invoke unregister
   ;;
 apply)
-  # apply <enabled> <outer> <inner> -- what the bar widget calls when a
-  # control changes: persist first, then reinstall from the stored values.
-  [[ $# -eq 4 ]] || exit 2
-  for value in "$2" "$3" "$4"; do
-    [[ $value =~ ^[0-9]{1,3}$ && $value -le 200 ]] || exit 2
-  done
-  write_settings "$2" "$3" "$4"
-  load_settings
-  if [[ $enabled == 0 ]]; then invoke register 0; else invoke register 1; fi
+  # apply <enabled> <outer> <inner> [corners tap step swipe expose]
+  # The short form keeps the gesture switches already stored. The bar widget
+  # sends the long form whenever a control changes.
+  if [[ $# -eq 4 ]]; then
+    is_flag "$2" && is_gap "$3" && is_gap "$4" || exit 2
+    load_settings
+    enabled=$2
+    gap_outer=$3
+    gap_inner=$4
+  elif [[ $# -eq 9 ]]; then
+    is_flag "$2" && is_gap "$3" && is_gap "$4" || exit 2
+    is_flag "$5" && is_flag "$6" && is_flag "$7" && is_flag "$8" && is_flag "$9" || exit 2
+    enabled=$2
+    gap_outer=$3
+    gap_inner=$4
+    corners=$5
+    tap_float=$6
+    workspace_step=$7
+    workspace_swipe=$8
+    expose=$9
+  else
+    exit 2
+  fi
+  write_settings
+  invoke register
   ;;
 show)
   # The widget reads its initial state from here, so the config file stays the
   # single source of truth even when shell.json has no entry yet.
   load_settings
-  printf 'ENABLED=%s\nGAP_OUTER=%s\nGAP_INNER=%s\n' "$enabled" "$gap_outer" "$gap_inner"
+  printf 'ENABLED=%s\nGAP_OUTER=%s\nGAP_INNER=%s\nCORNERS=%s\nTAP_FLOAT=%s\nWORKSPACE_STEP=%s\nWORKSPACE_SWIPE=%s\nEXPOSE=%s\n' \
+    "$enabled" "$gap_outer" "$gap_inner" "$corners" "$tap_float" "$workspace_step" "$workspace_swipe" "$expose"
   ;;
 *)
   exit 2

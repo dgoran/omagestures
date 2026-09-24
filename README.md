@@ -25,13 +25,16 @@ Snapped windows are inset by a gap rather than sitting flush: 5px from the
 usable screen edge and 10px between two halves, matching Omarchy's default
 `gaps_out` and `gaps_in`.
 
-Workspace gestures stay active while the plugin is installed, including when
-the bar widget has snapping switched off:
+Each of these has its own switch. Turning one off leaves the others in place:
 
+- 3-finger tap → toggle the active window between floating and tiling
 - 4-finger left → previous workspace, stopping at 1
 - 4-finger right → next workspace, stopping at 10
 - Super + 4-finger horizontal → animated workspace swipe
 - Super + 4-finger up → toggle Exposé
+
+The corner follow-up is a separate switch too. It only registers while half snap
+is on, because an up or down swipe has nothing to follow otherwise.
 
 Left moves toward workspace 1 and right toward workspace 10, on purpose, so the
 direction does not depend on `gestures.workspace_swipe_invert`. Workspaces
@@ -41,9 +44,9 @@ them twice.
 
 ## Bar widget
 
-OmaGestures puts a `◧` button on the Omarchy bar. Clicking it opens a small
-panel that switches the gestures on or off and sets the two gaps with sliders;
-the button dims while the gestures are off. Changes apply immediately.
+OmaGestures puts a `◧` button on the Omarchy bar. Clicking it opens a panel
+with a switch for every gesture above, plus the two snap gaps. The button dims
+when every switch is off. Changes apply immediately.
 
 Settings are stored twice on purpose. The bar entry in
 `~/.config/omarchy/shell.json` is what the panel displays, and
@@ -55,8 +58,9 @@ sourcing it, and refuses anything that is not an integer of at most 200.
 Both can be driven from a terminal:
 
 ```sh
-./activate.sh show             # print the current settings
-./activate.sh apply 1 5 10     # <enabled> <outer gap> <inner gap>
+./activate.sh show
+./activate.sh apply 1 5 10 1 1 1 1 1
+# <snap> <outer> <inner> <corners> <tap> <step> <super swipe> <exposé>
 ```
 
 ## How it works
@@ -67,7 +71,7 @@ A Hyprland config reload rebuilds that Lua runtime and drops the callbacks, so t
 
 There is no Python helper, persistent subprocess, Hyprland config edit/reload, Quickshell restart, or plugin IPC target. The snap gaps and the on/off switch are stored in `omagestures.conf` so a reload can reinstall without the shell.
 
-Removing the plugin unregisters the three-finger snap and the four-finger workspace gestures and clears the in-memory snap state. Switching snapping off in the bar widget removes only the three-finger gestures.
+Removing the plugin unregisters every gesture it installed, including the three-finger tap bind, and clears the in-memory snap state. Each bar switch removes only that gesture.
 
 ## Remove
 
@@ -84,5 +88,5 @@ omarchy plugin remove io.github.dgoran.omagestures
   ("Gesture will be overshadowed by a previous gesture"). Omarchy's stock
   `input.lua` registers `{ fingers = 3, direction = "horizontal", action =
   "scroll_move" }`; comment it out, or give these gestures a `mods` modifier.
-- No second copy of the four-finger gestures above. The plugin registers those
-  itself.
+- No second copy of the four-finger gestures above, and no separate `mouse:274`
+  bind. The plugin registers those itself.

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.dgoran.omagestures",
   "name": "OmaGestures",
-  "version": "7.3.0",
+  "version": "7.4.0",
   "author": "dgoran",
   "license": "MIT",
-  "description": "Trackpad gestures for Omarchy: three-finger floating-window snapping, four-finger workspace steps, and Super+four-finger workspace swipe and Exposé.",
+  "description": "Trackpad gestures for Omarchy, each with its own switch: three-finger snap, corner follow-up, and tap-to-float, plus four-finger workspace steps, Super swipe, and Exposé.",
   "kinds": ["service", "bar-widget"],
   "entryPoints": {
     "service": "Service.qml",

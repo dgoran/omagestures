@@ -52,9 +52,8 @@ BarWidget {
     // A half-filled square reads as the left-half snap the gestures perform.
     text: "◧"
     tooltipText: "OmaGestures"
-    // Dimmed while the gestures are switched off, so the bar shows the state
-    // without the panel having to be open.
-    dimmed: panelLoader.item ? panelLoader.item.gesturesEnabled === false : false
+    // Dimmed only when every switch is off, so the bar shows that at a glance.
+    dimmed: panelLoader.item ? panelLoader.item.anyEnabled === false : false
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.LeftButton) root.toggle()
     }
