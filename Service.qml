@@ -52,11 +52,11 @@ Item {
         }
     }
 
-    Component.onDestruction: Quickshell.execDetached([
-        "hyprctl", "eval",
-        "if _G.omagestures ~= nil then "
-            + "for _, d in ipairs({ 'left', 'right', 'up', 'down' }) do "
-            + "pcall(hl.gesture, { fingers = 3, direction = d, action = 'unset' }) end; "
-            + "_G.omagestures = nil end"
-    ])
+    // Disable goes through the activation script so removal clears the
+    // four-finger workspace gestures as well as the three-finger snap.
+    Component.onDestruction: {
+        if (pluginDir.length === 0)
+            return
+        Quickshell.execDetached(["bash", pluginDir + "/activate.sh", "disable"])
+    }
 }

@@ -160,7 +160,10 @@ Panel {
           wrapMode: Text.WordWrap
           text: "Three fingers left or right snaps the active floating window "
               + "to that half. Up or down within 30 seconds moves it to the "
-              + "matching corner. Tiled and fullscreen windows are left alone."
+              + "matching corner. Tiled and fullscreen windows are left alone. "
+              + "Four fingers left or right step between workspaces 1 and 10. "
+              + "Super plus a four-finger swipe moves between workspaces, and Super plus four fingers up toggles Exposé. "
+              + "Switching snapping off leaves those in place."
           color: Qt.darker(root.foreground, 1.5)
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption

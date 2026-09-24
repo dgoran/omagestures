@@ -25,24 +25,44 @@ cat >"$tmp/harness.lua" <<'EOF'
 local gestures = {}
 local calls = {}
 local now = 100
+local workspace_id = 4
 local monitor = {
   x = 100, y = 50, width = 2000, height = 1000, scale = 2,
   reserved = { 10, 20, 30, 40 },
 }
 local active_window = { mapped = true, floating = true, fullscreen = 0, monitor = monitor }
 
+local function key(spec)
+  local scale = spec.scale and string.format("%.1f", spec.scale) or ""
+  return table.concat({ tostring(spec.fingers), spec.direction, spec.mods or "", scale }, ":")
+end
+
 os.time = function() return now end
 
 hl = {
   dsp = { window = {} },
   get_active_window = function() return active_window end,
-  gesture = function(spec) gestures[spec.direction] = spec.action end,
+  get_active_workspace = function() return { id = workspace_id } end,
+  gesture = function(spec)
+    if spec.action == "unset" then gestures[key(spec)] = nil else gestures[key(spec)] = spec.action end
+  end,
   dispatch = function(dispatcher) calls[#calls + 1] = dispatcher end,
 }
 
 hl.dsp.window.float = function(spec) return { kind = "float", spec = spec } end
 hl.dsp.window.resize = function(spec) return { kind = "resize", spec = spec } end
 hl.dsp.window.move = function(spec) return { kind = "move", spec = spec } end
+hl.dsp.focus = function(spec) return { kind = "focus", spec = spec } end
+hl.dsp.event = function(name) return { kind = "event", name = name } end
+
+local function fire(fingers, direction, mods, scale)
+  local id = table.concat({
+    tostring(fingers), direction, mods or "", scale and string.format("%.1f", scale) or "",
+  }, ":")
+  local action = gestures[id]
+  assert(type(action) == "function", "missing gesture " .. id)
+  action()
+end
 
 assert(loadfile(os.getenv("OMAGESTURES_CAPTURE")))()
 
@@ -59,52 +79,95 @@ local function expect_geometry(x, y, w, h, window)
 end
 
 local snapped_window = active_window
-gestures.left()
+fire(3, "left")
 expect_geometry(115, 75, 470, 430, snapped_window)
 
 local other_window = { mapped = true, floating = true, fullscreen = 0, monitor = monitor }
 active_window = other_window
 reset_calls()
-gestures.up()
+fire(3, "up")
 expect_geometry(115, 75, 470, 210, snapped_window)
 
 reset_calls()
-gestures.down()
+fire(3, "down")
 assert(#calls == 0, "vertical follow-up must be single-use")
 
 active_window = other_window
-gestures.right()
+fire(3, "right")
 reset_calls()
 now = 131
-gestures.down()
+fire(3, "down")
 assert(#calls == 0, "vertical follow-up must expire after 30 seconds")
 
 now = 200
-gestures.right()
+fire(3, "right")
 reset_calls()
 now = 230
-gestures.down()
+fire(3, "down")
 expect_geometry(595, 295, 470, 210, other_window)
 
 -- Only floating windows are snapped, and a rejected swipe disarms the pending
 -- follow-up instead of leaving the previously snapped window targeted.
 active_window = other_window
-gestures.left()
+fire(3, "left")
 active_window = { mapped = true, floating = false, fullscreen = 0, monitor = monitor }
 reset_calls()
-gestures.left()
+fire(3, "left")
 assert(#calls == 0, "a tiled window must be left alone")
-gestures.up()
+fire(3, "up")
 assert(#calls == 0, "a rejected swipe must clear the armed follow-up")
 
 active_window = other_window
-gestures.left()
+fire(3, "left")
 active_window = { mapped = true, floating = true, fullscreen = 2, monitor = monitor }
 reset_calls()
-gestures.left()
+fire(3, "left")
 assert(#calls == 0, "a fullscreen window must be left alone")
-gestures.up()
+fire(3, "up")
 assert(#calls == 0, "a fullscreen window must not arm the vertical follow-up")
+
+assert(gestures["4:horizontal:SUPER:1.3"] == "workspace", "super swipe keeps the native workspace gesture")
+
+reset_calls()
+workspace_id = 4
+fire(4, "left")
+assert(#calls == 1 and calls[1].kind == "focus" and calls[1].spec.workspace == "3", "four-finger left steps toward workspace 1")
+
+reset_calls()
+fire(4, "right")
+assert(#calls == 1 and calls[1].kind == "focus" and calls[1].spec.workspace == "5", "four-finger right steps toward workspace 10")
+
+reset_calls()
+workspace_id = 1
+fire(4, "left")
+assert(#calls == 0, "workspace stepping stops at 1")
+
+reset_calls()
+workspace_id = 10
+fire(4, "right")
+assert(#calls == 0, "workspace stepping stops at 10")
+
+reset_calls()
+workspace_id = "special:scratch"
+fire(4, "left")
+assert(#calls == 0, "a named workspace has no numbered neighbour")
+
+reset_calls()
+workspace_id = 11
+fire(4, "right")
+assert(#calls == 0, "a workspace outside 1..10 is left alone")
+
+reset_calls()
+fire(4, "up", "SUPER")
+assert(#calls == 1 and calls[1].kind == "event" and calls[1].name == "expose.window-overview:toggle",
+  "super plus four fingers up toggles Exposé")
+
+-- A second install unsets the previous copies before registering again.
+assert(loadfile(os.getenv("OMAGESTURES_CAPTURE")))()
+reset_calls()
+workspace_id = 4
+fire(4, "left")
+assert(calls[1].spec.workspace == "3", "reinstall keeps a single workspace step")
 
 print("native gesture behavior: ok")
 EOF
@@ -116,17 +179,24 @@ bash "$repo/activate.sh" disable
 
 cat >"$tmp/disable-harness.lua" <<'EOF'
 local removed = {}
+local function key(spec)
+  local scale = spec.scale and string.format("%.1f", spec.scale) or ""
+  return table.concat({ tostring(spec.fingers), spec.direction, spec.mods or "", scale }, ":")
+end
 hl = {
   gesture = function(spec)
-    assert(spec.fingers == 3)
     assert(spec.action == "unset")
-    removed[spec.direction] = true
+    removed[key(spec)] = true
   end,
 }
 _G.omagestures = { state = "old" }
 assert(loadfile(os.getenv("OMAGESTURES_CAPTURE")))()
-for _, direction in ipairs({ "left", "right", "up", "down" }) do
-  assert(removed[direction], "missing removal for " .. direction)
+local expected = {
+  "3:left::", "3:right::", "3:up::", "3:down::",
+  "4:horizontal:SUPER:1.3", "4:up:SUPER:", "4:left::", "4:right::",
+}
+for _, id in ipairs(expected) do
+  assert(removed[id], "missing removal for " .. id)
 end
 assert(_G.omagestures == nil, "disable must clear runtime state")
 print("gesture cleanup: ok")
@@ -146,10 +216,33 @@ grep -q "local GAP_OUTER = 8 local GAP_INNER = 16" "$tmp/apply.lua" ||
 if bash "$repo/activate.sh" apply 1 "x; rm -rf /" 5 2>/dev/null; then
   echo "non-numeric gap was accepted"; exit 1
 fi
-# Disabling in the widget must survive the reinstall that a config reload runs.
+# Turning snapping off must drop the three-finger gestures and keep the
+# four-finger workspace ones, including across the reinstall a config reload runs.
 bash "$repo/activate.sh" apply 0 5 10
-grep -q "_G.omagestures = nil" "$tmp/apply.lua" ||
-  { echo "disabled state did not unregister on enable"; exit 1; }
+cat >"$tmp/snap-off.lua" <<'EOF'
+local live = {}
+local function key(spec)
+  local scale = spec.scale and string.format("%.1f", spec.scale) or ""
+  return table.concat({ tostring(spec.fingers), spec.direction, spec.mods or "", scale }, ":")
+end
+hl = {
+  dsp = { window = {}, focus = function() return {} end, event = function() return {} end },
+  get_active_window = function() return nil end,
+  get_active_workspace = function() return { id = 1 } end,
+  gesture = function(spec)
+    if spec.action == "unset" then live[key(spec)] = nil else live[key(spec)] = spec.action end
+  end,
+  dispatch = function() end,
+}
+_G.omagestures = { state = "armed" }
+assert(loadfile(os.getenv("OMAGESTURES_CAPTURE")))()
+assert(live["3:left::"] == nil, "snapping off must remove the three-finger gestures")
+assert(live["4:horizontal:SUPER:1.3"] == "workspace", "snapping off must keep workspace swipe")
+assert(type(live["4:left::"]) == "function", "snapping off must keep workspace stepping")
+assert(_G.omagestures ~= nil and _G.omagestures.state == nil, "snapping off clears armed snap state")
+print("snap toggle keeps workspace gestures: ok")
+EOF
+lua "$tmp/snap-off.lua"
 bash "$repo/activate.sh" apply 1 5 10
 echo "settings round-trip: ok"
 
